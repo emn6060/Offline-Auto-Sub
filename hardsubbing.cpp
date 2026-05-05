@@ -20,7 +20,7 @@ extern "C" {
         
         // Komut doğrudan C:\ffmpeg\ffmpeg.exe olarak güncellendi
         std::string komut = "C:\\ffmpeg\\ffmpeg.exe -y -i \"" + std::string(video_yolu) + 
-                            "\" -vf \"subtitles='" + guvenli_srt_yolu + "':force_style='" + stil + "'\" -c:a copy \"" + 
+                            "\" -vf \"subtitles='" + kacisli_srt_yolu + "':force_style='" + stil + "'\" -c:a copy \"" + 
                             std::string(cikti_yolu) + "\"";
     
         int sonuc = std::system(komut.c_str()); 
