@@ -3,6 +3,43 @@ import os
 import torch
 from faster_whisper import WhisperModel
 
+# Model boyutları (MB cinsinden yaklaşık değerler)
+WHISPER_BOYUTLARI = {
+    "tiny": 40,
+    "base": 75,
+    "small": 250,
+    "medium": 1500,
+    "large-v3": 3000
+}
+
+def whisper_modeli_kontrol_et(model_boyutu="medium"):
+    """
+    Model klasörde var mı diye bakar. 
+    Yoksa indirilmesi gereken yaklaşık boyutu (MB) döndürür.
+    Varsa 0 döndürür.
+    """
+    arama_dizini = os.path.join(os.getcwd(), "models", "whisper")
+    
+    # Klasör varsa içinde model boyutunu içeren bir alt klasör arıyoruz
+    if os.path.exists(arama_dizini):
+        for dosya in os.listdir(arama_dizini):
+            if model_boyutu in dosya.lower():
+                hedef_klasor = os.path.join(arama_dizini, dosya)
+                # Klasörün içi boş mu diye kontrol et
+                if os.path.isdir(hedef_klasor) and len(os.listdir(hedef_klasor)) > 2:
+                    return 0 # Model zaten var, indirilecek veri yok
+                    
+    return WHISPER_BOYUTLARI.get(model_boyutu, 1500)
+
+def whisper_modeli_indir(model_boyutu="medium"):
+    """Sadece modeli indirir, UI tarafındaki kurulum ekranı için kullanılır."""
+    model_dizini = os.path.join(os.getcwd(), "models", "whisper")
+    os.makedirs(model_dizini, exist_ok=True)
+    
+    # WhisperModel'i CPU'da çalıştırarak sadece indirme işlemini tetikleriz
+    WhisperModel(model_boyutu, device="cpu", compute_type="int8", download_root=model_dizini)
+    return True
+
 # FFmpeg yolu — sistemde birden fazla lokasyonu dene
 def ffmpeg_yolunu_bul():
     olasiliklar = [
@@ -74,7 +111,17 @@ def videodan_metin_cikar(orijinal_video, model_boyutu="medium", durum_kancasi=No
         print(f"Whisper cihaz: {cihaz}, hesaplama tipi: {hesaplama_tipi}")
         
         # Faster-Whisper modelini yükle
-        model = WhisperModel(model_boyutu, device=cihaz, compute_type=hesaplama_tipi)
+        # Modellerin her zaman kaydedileceği/okunacağı yerel dizin
+        model_dizini = os.path.join(os.getcwd(), "models", "whisper")
+        os.makedirs(model_dizini, exist_ok=True)
+        
+        # Faster-Whisper modelini yerel dizinden yükle (download_root parametresi ile)
+        model = WhisperModel(
+            model_boyutu, 
+            device=cihaz, 
+            compute_type=hesaplama_tipi,
+            download_root=model_dizini
+        )
         
         # Sesi metne dök
         segmentler, bilgi = model.transcribe(gecici_ses, beam_size=5)
