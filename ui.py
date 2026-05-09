@@ -8,22 +8,51 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout
                              QHBoxLayout, QWidget, QFileDialog, QLabel, QProgressBar, 
                              QSlider, QFrame, QGroupBox, QComboBox, QListWidget,
                              QSpinBox, QMessageBox)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QImage, QPixmap
 
-# --- ÇOKLU DİL SÖZLÜĞÜ (Genişletildi) ---
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QImage, QPixmap, QFontDatabase
+
+# --- ÇOKLU DİL SÖZLÜĞÜ ---
 DIL_SECENEKLERI = {
     "Türkçe": "tr", "İngilizce": "en", "Almanca": "de", "Fransızca": "fr",
     "İspanyolca": "es", "İtalyanca": "it", "Rusça": "ru", "Arapça": "ar",
     "Çince": "zh", "Japonca": "ja", "Korece": "ko", "Portekizce": "pt"
 }
 
+class KurulumIsleyicisi(QThread):
+    ilerleme = pyqtSignal(int, str)
+    tamamlandi = pyqtSignal()
+
+    def _init_(self, whisper_indir_lazim, ceviri_indir_lazim):
+        super()._init_()
+        self.whisper_indir_lazim = whisper_indir_lazim
+        self.ceviri_indir_lazim = ceviri_indir_lazim
+
+    def run(self):
+        try:
+            if self.whisper_indir_lazim:
+                self.ilerleme.emit(10, "Yapay Zeka Modeli İndiriliyor (Whisper ~1.5GB)...")
+                from ses_ayristirma import whisper_modeli_indir
+                whisper_modeli_indir("medium")
+            
+            if self.ceviri_indir_lazim:
+                self.ilerleme.emit(60, "Temel Çeviri Modelleri İndiriliyor (~600MB)...")
+                from ceviri_modulu2 import ceviri_modelini_indir
+                ceviri_modelini_indir("en", "tr")
+                ceviri_modelini_indir("tr", "en")
+                
+            self.ilerleme.emit(100, "Kurulum Tamamlandı!")
+            self.tamamlandi.emit()
+        except Exception as e:
+            self.ilerleme.emit(0, f"Hata: {str(e)}")
+            self.tamamlandi.emit()
+
 class AltyaziIsleyicisi(QThread):
     ilerleme = pyqtSignal(int, str)
     tamamlandi = pyqtSignal(bool, str)
 
-    def __init__(self, video_yolu, cikti_yolu, hedef_dil_kodu, stil_ayarlari):
-        super().__init__()
+    def _init_(self, video_yolu, cikti_yolu, hedef_dil_kodu, stil_ayarlari):
+        super()._init_()
         self.video_yolu = video_yolu
         self.cikti_yolu = cikti_yolu
         self.hedef_dil_kodu = hedef_dil_kodu
@@ -38,7 +67,7 @@ class AltyaziIsleyicisi(QThread):
             kaynak_dil = stt_verisi['dil']
             
             self.ilerleme.emit(50, f"Çeviri Modeli Hazırlanıyor ({kaynak_dil.upper()} -> {self.hedef_dil_kodu.upper()})...")
-            from ceviri_modulu import CeviriVeSrtYoneticisi
+            from ceviri_modulu2 import CeviriVeSrtYoneticisi
             yonetici = CeviriVeSrtYoneticisi(kaynak_dil=kaynak_dil, hedef_dil=self.hedef_dil_kodu)
             
             srt_dosyasi = "gecici_altyazi.srt"
@@ -51,7 +80,7 @@ class AltyaziIsleyicisi(QThread):
             
             self.ilerleme.emit(85, "Altyazı Videoya Gömülüyor (FFmpeg)...")
             kutuphane_uzantisi = ".dll" if platform.system() == "Windows" else ".so"
-            kutuphane_yolu = os.path.join(os.path.dirname(__file__), f"hardsubbing{kutuphane_uzantisi}")
+            kutuphane_yolu = os.path.join(os.path.dirname(_file_), f"hardsubbing{kutuphane_uzantisi}")
             
             if os.path.exists(kutuphane_yolu):
                 # --- DLL YÜKLEME ÇÖZÜMÜ BAŞLANGICI ---
@@ -68,7 +97,7 @@ class AltyaziIsleyicisi(QThread):
                 altyaziyi_gom.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p, ctypes.c_char_p]
                 
                 # Windows CMD'nin utf-8 yerine kendi karakter setini beklemesi nedeniyle düzeltme:
-                kodlama = 'mbcs' if platform.system() == "Windows" else 'utf-8'
+                kodlama = 'utf-8'
 
                 video_b = self.video_yolu.encode(kodlama)
                 srt_b = srt_dosyasi.encode(kodlama)
@@ -87,9 +116,9 @@ class AltyaziIsleyicisi(QThread):
             self.tamamlandi.emit(False, str(hata))
 
 class ModernAltyaziUygulamasi(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("AI Vision - Profesyonel Altyazı Düzenleyici")
+    def _init_(self):
+        super()._init_()
+        self.setWindowTitle("Offline Auto Sub")
         self.setMinimumSize(1100, 750)
         self.setAcceptDrops(True)
         self.dosya_yolu = ""
@@ -97,7 +126,58 @@ class ModernAltyaziUygulamasi(QMainWindow):
         
         self.stilleri_uygula()
         self.arayuzu_hazirla()
+
+        QTimer.singleShot(500, self.kurulum_kontrolu)
+
+    def kurulum_kontrolu(self):
+        try:
+            from ses_ayristirma import whisper_modeli_kontrol_et
+            from ceviri_modulu2 import ceviri_modeli_kontrol_et
+            
+            # Eksik dosyaların boyutlarını hesapla
+            whisper_boyut = whisper_modeli_kontrol_et("medium")
+            ceviri_boyut_en_tr = ceviri_modeli_kontrol_et("en", "tr")
+            ceviri_boyut_tr_en = ceviri_modeli_kontrol_et("tr", "en")
+            
+            toplam_boyut = whisper_boyut + ceviri_boyut_en_tr + ceviri_boyut_tr_en
+            
+            if toplam_boyut > 0:
+                mesaj = (f"Uygulamanın çevrimdışı ve tam performanslı çalışabilmesi için "
+                         f"bazı yapay zeka modelleri eksik.\n\n"
+                         f"İndirilecek Toplam Veri: ~{toplam_boyut} MB\n\n"
+                         f"Bu işlem internet hızınıza bağlı olarak zaman alabilir. Şimdi indirilsin mi?")
+                
+                cevap = QMessageBox.question(
+                    self, "Gerekli Modeller İndirilecek", mesaj,
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                
+                if cevap == QMessageBox.StandardButton.Yes:
+                    self.whisper_lazim = whisper_boyut > 0
+                    self.ceviri_lazim = (ceviri_boyut_en_tr + ceviri_boyut_tr_en) > 0
+                    self.kurulum_ekranini_baslat()
+                else:
+                    self.durum_mesaji.setText("Kurulum atlandı. Olası yavaşlıklar yaşanabilir.")
+        except Exception as e:
+            print("Kurulum kontrolünde hata:", e)
+
+    def kurulum_ekranini_baslat(self):
+        self.baslat_butonu.setEnabled(False)
+        self.durum_mesaji.setText("Modeller indiriliyor, lütfen bekleyin...")
+        self.ilerleme_cubugu.setValue(0)
         
+        self.kurulum_isleyici = KurulumIsleyicisi(self.whisper_lazim, self.ceviri_lazim)
+        self.kurulum_isleyici.ilerleme.connect(self.arayuzu_guncelle)
+        self.kurulum_isleyici.tamamlandi.connect(self.kurulum_bitti)
+        self.kurulum_isleyici.start()
+
+    def kurulum_bitti(self):
+        if "Hata" not in self.durum_mesaji.text():
+            QMessageBox.information(self, "Başarılı", "Tüm modeller başarıyla indirildi. Uygulama çevrimdışı kullanıma hazır!")
+            self.durum_mesaji.setText("Hazır")
+        self.baslat_butonu.setEnabled(True)
+        self.ilerleme_cubugu.setValue(0)
+     
     def stilleri_uygula(self):
         self.setStyleSheet("""
             QMainWindow { background-color: #0f111a; }
@@ -136,8 +216,11 @@ class ModernAltyaziUygulamasi(QMainWindow):
         stil_yerlesimi = QVBoxLayout()
         h_yerlesim = QHBoxLayout()
         self.font_kutusu = QComboBox()
-        # Font seçenekleri artırıldı
-        self.font_kutusu.addItems(["Arial", "Verdana", "Times New Roman", "Courier New", "Tahoma", "Impact", "Comic Sans MS"])
+        # Sistemdeki TÜM fontları otomatik çek
+        font_ailesi = QFontDatabase.families()
+        self.font_kutusu.addItems(font_ailesi)
+        if "Arial" in font_ailesi:
+            self.font_kutusu.setCurrentText("Arial")
         self.font_kutusu.currentTextChanged.connect(self.altyazi_onizlemesini_guncelle)
         
         self.font_boyutu = QSpinBox()
@@ -293,7 +376,7 @@ class ModernAltyaziUygulamasi(QMainWindow):
             
             # Konum dönüşümü (Güvenli liste erişimi)
             konum_indeksi = self.konum_kutusu.currentIndex()
-            # 2: Alt, 5: Orta, 8: Üst (FFmpeg ASS formatına göre)
+            # 2: at, 5: Orta, 8: Üst (FFmpeg ASS formatına göre)
             hizalama_degerleri = [2, 5, 8]
             
             # Eğer olur da combobox'tan geçersiz bir değer gelirse varsayılan olarak Alt(2) seç
@@ -302,9 +385,13 @@ class ModernAltyaziUygulamasi(QMainWindow):
             else:
                 hizalama = 2 
 
-            stil = f"Fontname={font},Fontsize={boyut},Alignment={hizalama}"
+            # Eğer üst seçiliyse (8), ekranın tepesine yapışmaması için dikey marjin veriyoruz.
+            # Eğer alt/orta seçiliyse standart boşluk bırakıyoruz.
+            margin_v = 30 if hizalama == 8 else 10
             
-            # Dil seçimi
+            stil = f"Fontname={font},Fontsize={boyut},Alignment={hizalama},MarginV={margin_v}"
+            
+            #dl seçimi
             secilen_dil = self.dil_kutusu.currentText()
             hedef_dil = DIL_SECENEKLERI.get(secilen_dil, "tr") # Sözlükten bulamazsa varsayılan tr
 
@@ -312,7 +399,7 @@ class ModernAltyaziUygulamasi(QMainWindow):
             orijinal_isim = os.path.splitext(os.path.basename(self.dosya_yolu))[0]
             cikti_dosyasi = os.path.join(self.cikti_yolu, f"{orijinal_isim}_{hedef_dil}_altyazili.mp4")
 
-            # 3. İşleyiciyi (Thread) Başlat
+            #  ileyiciyi (Thread) Başlat
             self.durum_mesaji.setText("İşlem başlatılıyor...")
             
             self.isleyici = AltyaziIsleyicisi(self.dosya_yolu, cikti_dosyasi, hedef_dil, stil)
@@ -320,7 +407,7 @@ class ModernAltyaziUygulamasi(QMainWindow):
             self.isleyici.tamamlandi.connect(self.islem_tamamlandi)
             self.isleyici.start()
             
-            # Buton durumlarını güncelle
+            #buton durumlarını güncelle
             self.baslat_butonu.setEnabled(False)
             self.iptal_butonu.setEnabled(True)
             
@@ -344,7 +431,7 @@ class ModernAltyaziUygulamasi(QMainWindow):
         if basarili: QMessageBox.information(self, "Tamamlandı", f"Video hazır: {mesaj}")
         else: QMessageBox.critical(self, "Hata", f"Hata: {mesaj}")
 
-if __name__ == "__main__":
+if _name_ == "_main_":
     uygulama = QApplication(sys.argv)
     pencere = ModernAltyaziUygulamasi()
     pencere.show()
