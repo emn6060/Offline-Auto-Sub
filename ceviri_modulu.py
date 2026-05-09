@@ -27,6 +27,38 @@ DOGRULANMIS_MODELLER = {
     ("tr", "fr"): "Helsinki-NLP/opus-mt-tr-fr",
 }
 
+CEVIRI_MODEL_BOYUTU_MB = 300
+
+def ceviri_modeli_kontrol_et(kaynak_dil="en", hedef_dil="tr"):
+    """
+    Belirtilen dil çifti için modelin klasörde olup olmadığını kontrol eder.
+    Yoksa indirilmesi gereken yaklaşık boyutu (MB) döndürür.
+    """
+    model_id = model_adi_bul(kaynak_dil, hedef_dil)
+    temiz_model_adi = model_id.replace("/", "_")
+    yerel_yol = os.path.join(os.getcwd(), "models", "translate", temiz_model_adi)
+    
+    # Klasör var mı ve içinde en az 3 dosya (config.json, pytorch_model.bin vs.) var mı?
+    if os.path.exists(yerel_yol) and len(os.listdir(yerel_yol)) > 2:
+        return 0 # Model mevcut
+        
+    return CEVIRI_MODEL_BOYUTU_MB
+
+def ceviri_modelini_indir(kaynak_dil="en", hedef_dil="tr"):
+    """Sadece belirtilen dili indirir, UI tarafındaki kurulum ekranı için kullanılır."""
+    # Sadece gerektiğinde içe aktarıyoruz ki gereksiz bellek harcamasın
+    from huggingface_hub import snapshot_download
+    
+    model_id = model_adi_bul(kaynak_dil, hedef_dil)
+    temiz_model_adi = model_id.replace("/", "_")
+    yerel_yol = os.path.join(os.getcwd(), "models", "translate", temiz_model_adi)
+    
+    os.makedirs(yerel_yol, exist_ok=True)
+    
+    # Modeli huggingface üzerinden belirtilen yerel klasöre indir
+    snapshot_download(repo_id=model_id, local_dir=yerel_yol)
+    return True
+
 def model_adi_bul(kaynak_dil, hedef_dil):
     anahtar = (kaynak_dil, hedef_dil)
     if anahtar in DOGRULANMIS_MODELLER:
@@ -51,11 +83,20 @@ class CeviriVeSrtYoneticisi:
         self.kelime_ayirici = None
         self.ceviri_modeli = None
 
+        # Her zaman ilk olarak kendi oluşturduğumuz "models/translate" klasörüne bak
+        model_id = model_adi_bul(kaynak_dil, hedef_dil)
+        temiz_model_adi = model_id.replace("/", "_")
+        varsayilan_yerel_yol = os.path.join(os.getcwd(), "models", "translate", temiz_model_adi)
+
         if yerel_model_dizini:
-            model_adi = os.path.basename(model_adi_bul(kaynak_dil, hedef_dil))
+            model_adi = os.path.basename(model_id)
             self.model_yolu = os.path.join(yerel_model_dizini, model_adi)
+        elif os.path.exists(varsayilan_yerel_yol) and len(os.listdir(varsayilan_yerel_yol)) > 2:
+            # Model önceden UI tarafından indirilmişse doğrudan o klasörü kullan (Çevrimdışı Mod)
+            self.model_yolu = varsayilan_yerel_yol
         else:
-            self.model_yolu = model_adi_bul(kaynak_dil, hedef_dil)
+            # Hiçbiri yoksa veya tam inmemişse orijinal ID'yi kullan (internet üzerinden dener)
+            self.model_yolu = model_id
 
         print("[" + kaynak_dil + " -> " + hedef_dil + "] model yukleniyor: " + self.model_yolu)
 
@@ -74,16 +115,41 @@ class CeviriVeSrtYoneticisi:
 
         # DENEME 1: safetensors
         try:
-            print("Deneme 1/3: safetensors...")
-            self.kelime_ayirici = MarianTokenizer.from_pretrained(self.model_yolu)
+            print("Deneme 1/3: safetensors (Önce Çevrimdışı/Yerel deneniyor)...")
+            
+            # 1. ADIM: Sadece yerel diskten okumayı zorla (Eski kullanıcılar için ışık hızı)
+            self.kelime_ayirici = MarianTokenizer.from_pretrained(
+                self.model_yolu, 
+                local_files_only=True
+            )
             self.ceviri_modeli = MarianMTModel.from_pretrained(
-                self.model_yolu, use_safetensors=True
+                self.model_yolu, 
+                use_safetensors=True, 
+                local_files_only=True
             ).to(self.cihaz)
-            print("Model safetensors ile yuklendi.")
+            
+            print("Model yerel depolama üzerinden anında yüklendi.")
             return
+            
         except Exception as e:
-            son_hata = e
-            print("  safetensors basarisiz: " + str(e)[:120])
+            # 2. ADIM: Yerelde bulamazsa (Yeni kullanıcıysa veya dosyalar eksikse) internetten indir
+            print("Yerel dosyalar eksik. İnternet üzerinden indiriliyor/doğrulanıyor...")
+            try:
+                self.kelime_ayirici = MarianTokenizer.from_pretrained(
+                    self.model_yolu, 
+                    local_files_only=False # İnternete izin ver
+                )
+                self.ceviri_modeli = MarianMTModel.from_pretrained(
+                    self.model_yolu, 
+                    use_safetensors=True, 
+                    local_files_only=False # İnternete izin ver
+                ).to(self.cihaz)
+                
+                print("Model internetten indirildi ve yüklendi.")
+                return
+            except Exception as e2:
+                son_hata = e2
+                print("  safetensors tamamen başarısız: " + str(e2)[:120])
 
         # DENEME 2: .bin + torch patch
         orijinal = None
