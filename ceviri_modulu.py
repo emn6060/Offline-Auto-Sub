@@ -55,8 +55,10 @@ class CeviriVeSrtYoneticisi:
         # Çevrimdışı mod: Klasör varsa yereli kullan, yoksa internetten çek
         if os.path.exists(yerel_yol) and len(os.listdir(yerel_yol)) > 2:
             self.model_yolu = yerel_yol
+            self.offline_mod = True
         else:
             self.model_yolu = NLLB_MODEL_ADI
+            self.offline_mod = False
 
         print(f"[{self.kaynak_nllb} -> {self.hedef_nllb}] NLLB modeli yükleniyor: {self.model_yolu}")
 
@@ -69,17 +71,25 @@ class CeviriVeSrtYoneticisi:
 
     def _modeli_yukle(self):
         try:
+            print(f"Çeviri modeli yükleniyor (Offline Mod: {self.offline_mod})...")
             # NLLB'de tokenizer'a kaynağın dilini belirtmemiz gerekiyor
             self.kelime_ayirici = AutoTokenizer.from_pretrained(
                 self.model_yolu, 
-                src_lang=self.kaynak_nllb
+                src_lang=self.kaynak_nllb,
+                local_files_only=self.offline_mod
             )
             self.ceviri_modeli = AutoModelForSeq2SeqLM.from_pretrained(
-                self.model_yolu
+                self.model_yolu,
+                local_files_only=self.offline_mod
             ).to(self.cihaz)
             print("Model başarıyla yüklendi.")
         except Exception as e:
-            raise Exception("Çeviri modeli yüklenemedi!\nDetay: " + str(e))
+            if self.offline_mod:
+                print("Yerel yükleme başarısız, internet üzerinden deneniyor...")
+                self.offline_mod = False
+                self._modeli_yukle()
+            else:
+                raise Exception("Çeviri modeli yüklenemedi!\nDetay: " + str(e))
 
     def metinleri_toplu_cevir(self, metinler, yigin_boyutu=16, ilerleme_kancasi=None):
         if getattr(self, "kelime_ayirici", None) is None or getattr(self, "ceviri_modeli", None) is None:
