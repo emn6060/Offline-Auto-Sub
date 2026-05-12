@@ -18,9 +18,9 @@ extern "C" {
         std::string stil = stil_ayarlari;
         std::cout << "Altyazi videoya gomuluyor...\n";
         
-        // Komut doğrudan C:\ffmpeg\ffmpeg.exe olarak güncellendi
-        std::string komut = "C:\\ffmpeg\\ffmpeg.exe -y -i \"" + std::string(video_yolu) + 
-                            "\" -vf \"subtitles='" + kacisli_srt_yolu + "':force_style='" + stil + "'\" -c:a copy \"" + 
+        // Komut CUDA donanım hızlandırması (NVENC) kullanacak şekilde güncellendi
+        std::string komut = "C:\\ffmpeg\\ffmpeg.exe -y -hwaccel cuda -i \"" + std::string(video_yolu) + 
+                            "\" -vf \"subtitles='" + guvenli_srt_yolu + "':force_style='" + stil + "'\" -c:v h264_nvenc -preset p6 -c:a copy \"" + 
                             std::string(cikti_yolu) + "\"";
     
         int sonuc = std::system(komut.c_str()); 

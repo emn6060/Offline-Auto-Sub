@@ -25,7 +25,7 @@ def whisper_modeli_kontrol_et(model_boyutu="medium"):
         for dosya in os.listdir(arama_dizini):
             if model_boyutu in dosya.lower():
                 hedef_klasor = os.path.join(arama_dizini, dosya)
-                # Klasörün içi boş mu diye kontrol et
+                # Klasörün içi boş mu diye kontrol et (en azından config, model.bin vs. olmalı)
                 if os.path.isdir(hedef_klasor) and len(os.listdir(hedef_klasor)) > 2:
                     return 0 # Model zaten var, indirilecek veri yok
                     
@@ -116,12 +116,26 @@ def videodan_metin_cikar(orijinal_video, model_boyutu="medium", durum_kancasi=No
         os.makedirs(model_dizini, exist_ok=True)
         
         # Faster-Whisper modelini yerel dizinden yükle (download_root parametresi ile)
-        model = WhisperModel(
-            model_boyutu, 
-            device=cihaz, 
-            compute_type=hesaplama_tipi,
-            download_root=model_dizini
-        )
+        try:
+            # Önce interneti tamamen kapatıp sadece yerelden (offline) yüklemeyi dene
+            print("Whisper modeli yerelden (offline mode) yükleniyor...")
+            model = WhisperModel(
+                model_boyutu, 
+                device=cihaz, 
+                compute_type=hesaplama_tipi,
+                download_root=model_dizini,
+                local_files_only=True # İNTERNETE ÇIKMAYA ÇALIŞMA, SADECE DOSYAYA BAK!
+            )
+        except Exception:
+            # Eğer yerelde yoksa, mecburen bir kereye mahsus internetle indir
+            print("Model yerelde bulunamadı, internetten indiriliyor...")
+            model = WhisperModel(
+                model_boyutu, 
+                device=cihaz, 
+                compute_type=hesaplama_tipi,
+                download_root=model_dizini,
+                local_files_only=False 
+            )
         
         # Sesi metne dök
         segmentler, bilgi = model.transcribe(gecici_ses, beam_size=5)
