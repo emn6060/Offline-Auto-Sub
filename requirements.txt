@@ -1,0 +1,8 @@
+faster-whisper
+torch
+transformers==4.44.0
+sentencepiece
+safetensors
+PyQt6
+opencv-python
+huggingface-hub
