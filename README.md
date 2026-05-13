@@ -11,13 +11,13 @@ IronScript; video dosyalarındaki konuşmaları yapay zeka ile analiz eden, metn
 ### Ekran Görüntüleri
 
 **Uygulama Arayüzü**
-![IronScript Arayüzü](assets/ui_screenshot.png)
+![IronScript Arayüzü](ui_screenshot.png)
 
 **Örnek Çıktılar (Korece ve Türkçe)**
 <p align="center">
-  <img src="assets/sample_korean.png" width="48%" alt="Korece Altyazılı Çıktı">
+  <img src="sample_korean.png" width="48%" alt="Korece Altyazılı Çıktı">
   &nbsp;
-  <img src="assets/sample_turkish.png" width="48%" alt="Türkçe Altyazılı Çıktı">
+  <img src="sample_turkish.png" width="48%" alt="Türkçe Altyazılı Çıktı">
 </p>
 
 ### Özellikler
@@ -58,13 +58,13 @@ IronScript is an advanced desktop application designed to transcribe, translate,
 ### Screenshots
 
 **Application Interface**
-![IronScript UI](assets/ui_screenshot.png)
+![IronScript UI](ui_screenshot.png)
 
 **Sample Outputs (Korean and Turkish)**
 <p align="center">
-  <img src="assets/sample_korean.png" width="48%" alt="Korean Subtitled Output">
+  <img src="sample_korean.png" width="48%" alt="Korean Subtitled Output">
   &nbsp;
-  <img src="assets/sample_turkish.png" width="48%" alt="Turkish Subtitled Output">
+  <img src="sample_turkish.png" width="48%" alt="Turkish Subtitled Output">
 </p>
 
 ### Features
